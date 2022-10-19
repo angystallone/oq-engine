@@ -22,6 +22,7 @@ import pandas as pd
 import numpy as np
 from openquake.baselib.general import BASE183, fast_agg2
 from openquake.baselib.performance import compile, Monitor
+from openquake.baselib.parallel import Starmap, pack, unpack, unlink
 from openquake.baselib.writers import scientificformat
 from openquake.hazardlib import nrml, InvalidFile
 from openquake.risklib import scientific
@@ -244,6 +245,14 @@ def clever_agg(ukeys, datalist, treaty_df, idx, overdict, eids):
     return clever_agg(keys, sums, treaty_df, idx, overdict, eids)
 
 
+def group_by_policies(policy_dicts, sharedf, treaty_df, monitor):
+    agglosses_df = unpack(sharedf)
+    dfs = []
+    for pol in policy_dicts:
+        dfs.append(by_policy(agglosses_df, pol, treaty_df))
+    return pd.concat(dfs)
+
+
 # tested in test_reinsurance.py
 def by_policy(agglosses_df, pol_dict, treaty_df):
     '''
@@ -266,6 +275,7 @@ def by_policy(agglosses_df, pol_dict, treaty_df):
     out.update(claim_to_cessions(claim, pol_dict, treaty_df))
     nonzero = out['claim'] > 0  # discard zero claims
     out_df = pd.DataFrame({k: out[k][nonzero] for k in out})
+    out_df['policy_grp'] = build_policy_grp(pol_dict, treaty_df)
     return out_df
 
 
@@ -319,17 +329,15 @@ def by_policy_event(agglosses_df, policy_df, treaty_df, mon=Monitor()):
     :param DataFrame treaty_df: treaties
     :returns: (risk_by_policy_df, risk_by_event_df)
     """
-    dfs = []
-    i = 1
     logging.info("Processing %d policies", len(policy_df))
-    for _, policy in policy_df.iterrows():
-        if i % 100 == 0:
-            logging.info("Processed %d policies", i)
-        df = by_policy(agglosses_df, dict(policy), treaty_df)
-        df['policy_grp'] = build_policy_grp(policy, treaty_df)
-        dfs.append(df)
-        i += 1
-    rbp = pd.concat(dfs)
+    try:
+        sharedf = pack(agglosses_df)
+        policies = [dict(pol) for _, pol in policy_df.iterrows()]
+        smap = Starmap.apply(group_by_policies,
+                             (policies, sharedf, treaty_df))
+        rbp = pd.concat(list(smap))
+    finally:
+        unlink(sharedf)
     if DEBUG:
         print(rbp.sort_values('event_id'))
     rbe = _by_event(rbp, treaty_df, mon)

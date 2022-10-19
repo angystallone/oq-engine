@@ -195,10 +195,12 @@ import traceback
 import collections
 from unittest import mock
 import multiprocessing.dummy
+import multiprocessing.shared_memory as shm
 import subprocess
 import psutil
 import getpass
 import numpy
+import pandas
 try:
     from setproctitle import setproctitle
 except ImportError:
@@ -1098,3 +1100,41 @@ def workers_wait(seconds=30):
         else:
             raise TimeoutError(status)
         return status
+
+
+def pack(dframe):
+    """
+    :param dframe: a DataFrame
+    :returns: a DataFrame with fields (col, name, shape, dtype)
+    """
+    dic = {'col': [], 'name': [], 'shape': [], 'dtype': []}
+    for col in dframe.columns:
+        arr = dframe[col].to_numpy()
+        sm = shm.SharedMemory(create=True, size=arr.nbytes)
+        new = numpy.ndarray(arr.shape, dtype=arr.dtype, buffer=sm.buf)
+        new[:] = arr  # copy the original array into shared name
+        dic['col'].append(col)
+        dic['name'].append(sm.name)
+        dic['shape'].append(arr.shape)
+        dic['dtype'].append(arr.dtype)
+    return pandas.DataFrame(dic)
+
+
+def unpack(shared):
+    """
+    :param shared: a DataFrame packed with pack
+    :returns: a DataFrame
+    """
+    dic = {}
+    for col, name, shape, dtype in zip(
+            shared.col, shared.name, shared['shape'], shared.dtype):
+        memory = shm.SharedMemory(name)
+        dic[col] = numpy.ndarray(shape, dtype, buffer=memory.buf)
+        print(col, name)
+        #memory.close()
+    return pandas.DataFrame(dic)
+
+
+def unlink(shared):
+    for name in shared.name:
+        shm.SharedMemory(name).unlink()
