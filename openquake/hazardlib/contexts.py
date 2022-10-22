@@ -463,7 +463,7 @@ class ContextMaker(object):
 
     def init_monitoring(self, monitor):
         # instantiating child monitors, may be called in the workers
-        self.ctx_mon = monitor('make_contexts', measuremem=True)
+        self.ctx_mon = monitor('make_contexts', measuremem=False)
         self.col_mon = monitor('collapsing contexts', measuremem=False)
         self.gmf_mon = monitor('computing mean_std', measuremem=False)
         self.poe_mon = monitor('get_poes', measuremem=False)
@@ -905,9 +905,10 @@ class ContextMaker(object):
         else:  # in event based we get a list with a single rupture
             rups_sites = [(src, sitecol)]
             src_id = 0
-        ctxs = self.gen_contexts(rups_sites, src_id)
-        return self.ctx_mon.iter(
-            (self.recarray(block) for block in block_splitter(ctxs, 100)))
+        rctxs = self.gen_contexts(rups_sites, src_id)
+        blocks = block_splitter(rctxs, 10_000, weight=len)
+        # the weight of 10_000 ensure less than 1MB per block (recarray)
+        return self.ctx_mon.iter(map(self.recarray, blocks))
 
     def max_intensity(self, sitecol1, mags, dists):
         """

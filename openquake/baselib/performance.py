@@ -344,6 +344,7 @@ class Monitor(object):
         """
         while True:
             try:
+                self.mem = 0
                 with self:
                     obj = next(genobj)
             except StopIteration:
