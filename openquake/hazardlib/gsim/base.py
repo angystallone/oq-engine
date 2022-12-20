@@ -93,8 +93,10 @@ def _set_poes(mean_std, loglevels, phi_b, out):
     for m, levels in enumerate(loglevels):
         mL1 = m * L1
         mea, std = mean_std[:, m]  # shape N
-        for lvl, iml in enumerate(levels):
-            out[mL1 + lvl] = truncnorm_sf(phi_b, (iml - mea) / std)
+        # now using a very important performance trick
+        lvl = numpy.zeros((len(levels), 1))
+        lvl[:, 0] = levels
+        out[mL1:mL1 + L1] = truncnorm_sf(phi_b, (lvl - mea) / std)
 
 
 def _get_poes(mean_std, loglevels, phi_b):
