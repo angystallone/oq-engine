@@ -959,23 +959,6 @@ class ContextMaker(object):
                         gsim.set_poes(ms, self, ctxt, poes[:, :, g])
             yield poes
 
-    def gen_poes(self, ctx, rup_indep=True):
-        """
-        :param ctx: a vectorized context (recarray) of size N
-        :param rup_indep: rupture flag (false for mutex ruptures)
-        :yields: poes, ctxt, invs with poes of shape (N, L, G)
-        """
-        ctx.mag = numpy.round(ctx.mag, 3)
-        for mag in numpy.unique(ctx.mag):
-            ctxt = ctx[ctx.mag == mag]
-            kctx, invs = self.collapser.collapse(ctxt, rup_indep)
-            if invs is None:  # no collapse
-                for poes in self._gen_poes(ctxt):
-                    yield poes, ctxt[self.slc], numpy.arange(len(poes))
-            else:  # collapse
-                poes = numpy.concatenate(list(self._gen_poes(kctx)))
-                yield poes, ctxt, invs
-
     def get_pmap(self, ctxs, rup_indep=True):
         """
         :param ctxs: a list of context arrays (only one for poissonian ctxs)
@@ -1001,11 +984,21 @@ class ContextMaker(object):
         else:
             itime = self.tom.time_span
         for ctx in ctxs:
-            for poes, ctxt, invs in self.gen_poes(ctx, rup_indep):
-                with self.pne_mon:
-                    pmap.update_(poes, invs, ctxt, itime, rup_indep)
+            ctx.mag = numpy.round(ctx.mag, 3)
+            for mag in numpy.unique(ctx.mag):
+                ctxt = ctx[ctx.mag == mag]
+                kctx, invs = self.collapser.collapse(ctxt, rup_indep)
+                if invs is None:  # no collapse
+                    for poes in self._gen_poes(ctxt):
+                        with self.pne_mon:
+                            pmap.update_(poes, numpy.arange(len(poes)),
+                                         ctxt[self.slc], itime, rup_indep)
+                else:  # collapse
+                    poes = numpy.concatenate(list(self._gen_poes(kctx)))
+                    with self.pne_mon:
+                        pmap.update_(poes, invs, ctxt, itime, rup_indep)
 
-    # called by gen_poes and by the GmfComputer
+    # called by the GmfComputer too
     def get_mean_stds(self, ctxs):
         """
         :param ctxs: a list of contexts with N=sum(len(ctx) for ctx in ctxs)

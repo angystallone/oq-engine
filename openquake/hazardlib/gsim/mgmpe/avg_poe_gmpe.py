@@ -113,8 +113,5 @@ class AvgPoeGMPE(GMPE):
         cm.poe_mon = performance.Monitor()  # avoid double counts
         cm.pne_mon = performance.Monitor()  # avoid double counts
         cm.gsims = self.gsims
-        avgs = []
-        for poes, ctxt, invs in cm.gen_poes(ctx):
-            # poes has shape N, L, G
-            avgs.append(poes @ self.weights)
-        arr[:] = np.concatenate(avgs)
+        arr[:] = np.concatenate([poes @ self.weights
+                                 for poes in cm._gen_poes(ctx)])
