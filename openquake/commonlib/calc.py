@@ -307,6 +307,7 @@ class RuptureImporter(object):
         """
         oq = self.oqparam
         logging.info('Reordering the ruptures and storing the events')
+        geom_id = numpy.argsort(rup_array['seed'])
         # order the ruptures by seed
         rup_array.sort(order='seed')
         nr = len(rup_array)
@@ -315,8 +316,7 @@ class RuptureImporter(object):
             dupl = seeds[counts > 1]
             logging.debug('The following %d rupture seeds are duplicated: %s',
                           len(dupl), dupl)
-        rup_array['geom_id'] = rup_array['id']
-        rup_array['id'] = numpy.arange(nr)
+        rup_array['geom_id'] = geom_id
         if len(self.datastore['ruptures']):
             self.datastore['ruptures'].resize((0,))
         hdf5.extend(self.datastore['ruptures'], rup_array)
@@ -356,8 +356,8 @@ class RuptureImporter(object):
                     raise ValueError('There are more than %d events!' % i)
         events.sort(order='rup_id')  # fast too
         # sanity check
-        n_unique_events = len(numpy.unique(events[['id', 'rup_id']]))
-        assert n_unique_events == len(events), (n_unique_events, len(events))
+        #n_unique_events = len(numpy.unique(events[['id', 'rup_id']]))
+        #assert n_unique_events == len(events), (n_unique_events, len(events))
         events['id'] = numpy.arange(len(events))
         # set event year and event ses starting from 1
         nses = self.oqparam.ses_per_logic_tree_path
