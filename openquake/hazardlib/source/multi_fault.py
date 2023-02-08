@@ -168,9 +168,11 @@ class MultiFaultSource(BaseSeismicSource):
                 sfc = MultiSurface([s[idx] for idx in idxs])
             hypo = s[idxs[0]].get_middle_point()
             data = [(p, o) for o, p in enumerate(probs)]
-            yield (NonParametricProbabilisticRupture(
+            rup = NonParametricProbabilisticRupture(
                 self.mags[i], self.rakes[i], self.tectonic_region_type, hypo,
-                sfc, PMF(data)), num_occ)
+                sfc, PMF(data))
+            rup.rup_id = i + self.offset
+            yield rup, num_occ
 
     def __iter__(self):
         if len(self.mags) <= BLOCKSIZE:  # already split

@@ -128,13 +128,14 @@ class BaseSeismicSource(metaclass=abc.ABCMeta):
             yield from self.sample_ruptures_poissonian(eff_num_ses)
         else:  # time-dependent source (nonparametric)
             mutex_weight = getattr(self, 'mutex_weight', 1)
-            for rup in self.iter_ruptures():
+            for i, rup in enumerate(self.iter_ruptures()):
                 occurs = rup.sample_number_of_occurrences(eff_num_ses)
                 if mutex_weight < 1:
                     # consider only the occurrencies below the mutex_weight
                     occurs *= (numpy.random.random(eff_num_ses) < mutex_weight)
                 num_occ = occurs.sum()
                 if num_occ:
+                    rup.rup_id = i + self.offset
                     yield rup, num_occ
 
     def get_mags(self):
@@ -162,12 +163,14 @@ class BaseSeismicSource(metaclass=abc.ABCMeta):
         :yields: pairs (rupture, num_occurrences[num_samples])
         """
         tom = self.temporal_occurrence_model
+        rupids = range(self.offset, self.offset + self.num_ruptures)
         if not hasattr(self, 'nodal_plane_distribution'):  # fault
             ruptures = list(self.iter_ruptures())
             rates = numpy.array([rup.occurrence_rate for rup in ruptures])
             occurs = numpy.random.poisson(rates * tom.time_span * eff_num_ses)
-            for rup, num_occ in zip(ruptures, occurs):
+            for rupid, rup, num_occ in zip(rupids, ruptures, occurs):
                 if num_occ:
+                    rup.rup_id = rupid
                     yield rup, num_occ
             return
         # else (multi)point sources and area sources
@@ -188,7 +191,7 @@ class BaseSeismicSource(metaclass=abc.ABCMeta):
                         rates.append(mag_occ_rate * np_prob * hc_prob)
         eff_rates = numpy.array(rates) * tom.time_span * eff_num_ses
         occurs = numpy.random.poisson(eff_rates)
-        for num_occ, args, rate in zip(occurs, rup_args, rates):
+        for rupid, num_occ, args, rate in zip(rupids, occurs, rup_args, rates):
             if num_occ:
                 _, np_prob, hc_prob, mag, np, lon, lat, hc_depth, src = args
                 hc = Point(lon, lat, hc_depth)
@@ -199,6 +202,7 @@ class BaseSeismicSource(metaclass=abc.ABCMeta):
                 rup = ParametricProbabilisticRupture(
                     mag, np.rake, src.tectonic_region_type, hc,
                     PlanarSurface.from_(planar), rate, tom)
+                rup.rup_id = rupid
                 yield rup, num_occ
 
     @abc.abstractmethod
@@ -345,6 +349,7 @@ class ParametricSeismicSource(BaseSeismicSource, metaclass=abc.ABCMeta):
         min_mag, max_mag = self.mfd.get_min_max_mag()
         return max(self.min_mag, min_mag), max_mag
 
+    # FIXME: this is absurdly slow for UCERF sources, don't do iter_ruptures!
     def get_one_rupture(self, ses_seed, rupture_mutex=False):
         """
         Yields one random rupture from a source. IMPORTANT: this method
@@ -364,9 +369,8 @@ class ParametricSeismicSource(BaseSeismicSource, metaclass=abc.ABCMeta):
         # indexes, one for magnitude and one setting the position
         for i, rup in enumerate(self.iter_ruptures()):
             if i == idx:
-                if hasattr(self, 'rup_id'):
-                    rup.seed = self.seed
-                rup.idx = idx
+                rup.seed = self.seed
+                rup.rup_id = idx + self.offset
                 return rup
 
     def modify_set_msr(self, new_msr):

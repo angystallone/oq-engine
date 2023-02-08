@@ -135,9 +135,9 @@ def get_rup_array(ebruptures, srcfilter=nofilter):
                 srcfilter.close_sids(rec, rup.tectonic_region_type)) == 0:
             continue
         rate = getattr(rup, 'occurrence_rate', numpy.nan)
-        tup = (0, ebrupture.seed, ebrupture.source_id, ebrupture.trt_smr,
-               rup.code, ebrupture.n_occ, rup.mag, rup.rake, rate,
-               minlon, minlat, maxlon, maxlat, hypo, 0, 0)
+        tup = (rup.rup_id, ebrupture.seed, ebrupture.source_id,
+               ebrupture.trt_smr, rup.code, ebrupture.n_occ, rup.mag,
+               rup.rake, rate, minlon, minlat, maxlon, maxlat, hypo, 0, 0)
         rups.append(tup)
         # we are storing the geometries as arrays of 32 bit floating points;
         # the first element is the number of surfaces, then there are
@@ -212,11 +212,11 @@ def sample_cluster(sources, srcfilter, num_ses, param):
                 if src_id not in rup_counter:
                     rup_counter[src_id] = {}
                     rup_data[src_id] = {}
-                if rup.idx not in rup_counter[src_id]:
-                    rup_counter[src_id][rup.idx] = 1
-                    rup_data[src_id][rup.idx] = [rup, src_id, trt_smr]
+                if rup.rup_id not in rup_counter[src_id]:
+                    rup_counter[src_id][rup.rup_id] = 1
+                    rup_data[src_id][rup.rup_id] = [rup, src_id, trt_smr]
                 else:
-                    rup_counter[src_id][rup.idx] += 1
+                    rup_counter[src_id][rup.rup_id] += 1
                 # Store info
                 dt = time.time() - t0
                 source_data['src_id'].append(src.source_id)
@@ -232,7 +232,7 @@ def sample_cluster(sources, srcfilter, num_ses, param):
         for rup_key in rup_data[src_key]:
             rup, source_id, trt_smr = rup_data[src_key][rup_key]
             cnt = rup_counter[src_key][rup_key]
-            ebr = EBRupture(rup, source_id, trt_smr, cnt)
+            ebr = EBRupture(rup, source_id, trt_smr, cnt, rup.rup_id)
             eb_ruptures.append(ebr)
 
     return eb_ruptures, source_data
@@ -287,7 +287,7 @@ def sample_ruptures(sources, cmaker, sitecol=None, monitor=Monitor()):
             samples = getattr(src, 'samples', 1)
             for rup, trt_smr, n_occ in src.sample_ruptures(
                     samples * num_ses, cmaker.ses_seed):
-                ebr = EBRupture(rup, src.source_id, trt_smr, n_occ)
+                ebr = EBRupture(rup, src.source_id, trt_smr, n_occ, rup.rup_id)
                 eb_ruptures.append(ebr)
             dt = time.time() - t0
             source_data['src_id'].append(src.source_id)
@@ -318,7 +318,8 @@ def sample_ebruptures(src_groups, cmakerdict):
             samples = getattr(src, 'samples', 1)
             for rup, trt_smr, n_occ in src.sample_ruptures(
                     samples * cmaker.ses_per_logic_tree_path, cmaker.ses_seed):
-                ebr = EBRupture(rup, src.source_id, trt_smr, n_occ, e0=e0)
+                ebr = EBRupture(
+                    rup, src.source_id, trt_smr, n_occ, rup.rup_id, e0)
                 ebr.ordinal = ordinal
                 ebrs.append(ebr)
                 e0 += n_occ
