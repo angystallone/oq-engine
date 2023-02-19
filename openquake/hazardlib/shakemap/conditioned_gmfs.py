@@ -193,15 +193,18 @@ class ConditionedGmfComputer(GmfComputer):
         for g, (gmm, rlzs) in enumerate(rlzs_by_gsim.items()):
             if num_events == 0:  # it may happen
                 continue
-            # NB: the trick for performance is to keep the call to
-            # .compute outside of the loop over the realizations;
-            # it is better to have few calls producing big arrays
-            mean_covs = get_conditioned_mean_and_covariance(
+            # NB: the target sites can get filtered within 
+            # get_conditioned_mean_and_covariance(), thus
+            # the need to return the filtered sids from
+            # the function
+            sids_mean_covs = get_conditioned_mean_and_covariance(
                 self.rupture, gmm, self.station_sitecol, self.station_data,
                 self.observed_imt_strs, self.target_sitecol, self.imts,
                 self.spatial_correl,
                 self.cross_correl_between, self.cross_correl_within,
                 self.cmaker.maximum_distance)
+            sids = sids_mean_covs[0]
+            mean_covs = sids_mean_covs[1:]
 
             array, sig, eps = self.compute(gmm, num_events, mean_covs, rng)
             M, N, E = array.shape  # sig and eps have shapes (M, E) instead
@@ -508,6 +511,7 @@ def get_conditioned_mean_and_covariance(
         target_sitecol_filtered = target_sitecol.filtered(
             target_sites_filtered)
         num_target_sites = len(target_sitecol_filtered)
+        sids = target_sitecol_filtered.sids
         # (4, G, M, N): mean, StdDev.TOTAL, StdDev.INTER_EVENT,
         # StdDev.INTRA_EVENT; G gsims, M IMTs, N sites/distances
 
@@ -602,7 +606,7 @@ def get_conditioned_mean_and_covariance(
         cov_WY_WY_wD_dict[target_imt.string] = cov_WY_WY_wD
         cov_BY_BY_yD_dict[target_imt.string] = cov_BY_BY_yD
 
-    return mu_Y_yD_dict, cov_Y_Y_yD_dict, cov_WY_WY_wD_dict, cov_BY_BY_yD_dict
+    return sids, mu_Y_yD_dict, cov_Y_Y_yD_dict, cov_WY_WY_wD_dict, cov_BY_BY_yD_dict
 
 
 def compute_spatial_cross_correlation_matrix(
