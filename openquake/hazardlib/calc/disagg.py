@@ -205,8 +205,8 @@ def get_eps4(eps_edges, truncation_level):
 
 
 # NB: this function is the crucial bit for performance!
-def _disaggregate(ctx, mea, std, cmaker, g, iml2, bin_edges, epsstar=False,
-                  mon=Monitor()):
+def _disaggregate(ctx, mea, std, cmaker, g, iml2, bin_edges, epsstar,
+                  mon1, mon2, mon3):
     # ctx: a recarray of size U for a single site and magnitude bin
     # mea: array of shape (G, M, U)
     # std: array of shape (G, M, U)
@@ -218,7 +218,7 @@ def _disaggregate(ctx, mea, std, cmaker, g, iml2, bin_edges, epsstar=False,
     # epsstar: a boolean. When True, disaggregation contains eps* results
     # returns a 7D-array of shape (D, Lo, La, E, M, P, Z)
 
-    with mon('disagg by eps', measuremem=False):
+    with mon1:
         eps_edges = tuple(bin_edges[-1])  # last edge
         min_eps, max_eps, eps_bands, cum_bands = get_eps4(
             eps_edges, cmaker.truncation_level)
@@ -248,7 +248,7 @@ def _disaggregate(ctx, mea, std, cmaker, g, iml2, bin_edges, epsstar=False,
                 poes[:, :, m, p] = _disagg_eps(
                     truncnorm_sf(phi_b, lvls), idxs, eps_bands, cum_bands)
 
-    with mon('composing pnes', measuremem=False):
+    with mon2:
         time_span = cmaker.tom.time_span
         if any(len(probs) for probs in ctx.probs_occur):  # any probs_occur
             for u, rec in enumerate(ctx):
@@ -259,7 +259,7 @@ def _disaggregate(ctx, mea, std, cmaker, g, iml2, bin_edges, epsstar=False,
                 pnes[:, e, m, p] *= numpy.exp(
                     -ctx.occurrence_rate * poes[:, e, m, p] * time_span)
 
-    with mon('building disagg matrix', measuremem=False):
+    with mon3:
         bindata = BinData(ctx.rrup, ctx.clon, ctx.clat, pnes)
         return _build_disagg_matrix(bindata, bin_edges[1:])
 
@@ -381,12 +381,24 @@ pmf_map = dict([
     ('Lon_Lat', lon_lat_pmf),
     ('Mag_Lon_Lat', mag_lon_lat_pmf),
     ('TRT', trt_pmf),
+    ('TRT_Mag', None),
     ('TRT_Lon_Lat', None),
     ('TRT_Mag_Dist', None),
     ('TRT_Mag_Dist_Eps', None),
 ])
 
 # ########################## Disaggregator class ########################## #
+
+def split_by_magbin(ctxt, mag_edges):
+    """
+    :param ctxt: a context array
+    :param mag_edges: magnitude bin edges
+    :returns: a dictionary magbin -> ctxt
+    """
+    ctx = ctxt[numpy.argsort(ctxt.mag)]
+    fullmagi = numpy.searchsorted(mag_edges, ctx.mag) - 1
+    fullmagi[fullmagi == -1] = 0  # magnitude on the edge
+    return {magi: ctx[fullmagi == magi] for magi in numpy.unique(fullmagi)}
 
 
 class Disaggregator(object):
@@ -430,25 +442,30 @@ class Disaggregator(object):
         ctx = numpy.concatenate(ctxs).view(numpy.recarray)
         if len(ctx) == 0:
             raise FarAwayRupture('No ruptures affecting site #%d' % sid)
-
-        # build the magnitude bins
-        self.fullmagi = numpy.searchsorted(bin_edges[0], ctx.mag) - 1
-        self.fullmagi[self.fullmagi == -1] = 0  # magnitude on the edge
-
         self.fullctx = ctx
 
-    def init(self, magi, src_mutex, monitor=Monitor()):
+    def init(self, magi, src_mutex,
+             mon0=Monitor('disagg mean_stds'),
+             mon1=Monitor('disagg by eps'),
+             mon2=Monitor('composing pnes'),
+             mon3=Monitor('disagg matrix')):
         self.magi = magi
         self.src_mutex = src_mutex
-        self.mon = monitor
-        self.ctx = self.fullctx[self.fullmagi == magi]
-        if len(self.ctx) == 0:
+        self.mon1 = mon1
+        self.mon2 = mon2
+        self.mon3 = mon3
+        if not hasattr(self, 'ctx_by_magi'):
+            # the first time build the magnitude bins
+            self.ctx_by_magi = split_by_magbin(self.fullctx, self.bin_edges[0])
+        try:
+            self.ctx = self.ctx_by_magi[magi]
+        except KeyError:
             raise FarAwayRupture
         if self.src_mutex:
             # make sure we can use idx_start_stop below
             self.ctx.sort(order='src_id')
-        self.mea, self.std = self.cmaker.get_mean_stds(
-            [self.ctx], split_by_mag=True)[:2]
+        with mon0:
+            self.mea, self.std = self.cmaker.get_mean_stds([self.ctx])[:2]
         if self.src_mutex:
             mat = idx_start_stop(self.ctx.src_id)  # shape (n, 3)
             src_ids = mat[:, 0]  # subset contributing to the given magi
@@ -458,7 +475,7 @@ class Disaggregator(object):
                                               self.src_mutex['weight'])
                             if s in src_ids]
 
-    def disagg6D(self, iml2, g):
+    def disagg6D(self, iml2, rlz):
         """
         Disaggregate a single realization.
 
@@ -468,10 +485,11 @@ class Disaggregator(object):
         imlog2 = numpy.zeros_like(iml2)
         for m, imt in enumerate(self.cmaker.imts):
             imlog2[m] = to_distribution_values(iml2[m], imt)
+        g = self.g_by_rlz[rlz]
         if not self.src_mutex:
             return _disaggregate(self.ctx, self.mea, self.std, self.cmaker,
                                  g, imlog2, self.bin_edges, self.epsstar,
-                                 self.mon)
+                                 self.mon1, self.mon2, self.mon3)
 
         # else average on the src_mutex weights
         mats = []
@@ -480,7 +498,8 @@ class Disaggregator(object):
             mea = self.mea[:, :, s1:s2]  # shape (G, M, U)
             std = self.std[:, :, s1:s2]  # shape (G, M, U)
             mat = _disaggregate(ctx, mea, std, self.cmaker, g, imlog2,
-                                self.bin_edges, self.epsstar, self.mon)
+                                self.bin_edges, self.epsstar,
+                                self.mon1, self.mon2, self.mon3)
             mats.append(mat)
         return numpy.average(mats, weights=self.weights, axis=0)
 
