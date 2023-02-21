@@ -376,13 +376,13 @@ class SiteCollection(object):
                   for p in ('sids', 'lon', 'lat', 'depth')] + extra
         self.array = arr = numpy.zeros(len(sites), dtlist)
         self.complete = self
-        for i in range(len(arr)):
-            arr['sids'][i] = i
-            arr['lon'][i] = sites[i].location.longitude
-            arr['lat'][i] = sites[i].location.latitude
-            arr['depth'][i] = sites[i].location.depth
+        for i, site in enumerate(sites):
+            arr['sids'][i] = getattr(site, 'id', i)
+            arr['lon'][i] = site.location.longitude
+            arr['lat'][i] = site.location.latitude
+            arr['depth'][i] = site.location.depth
             for p, dt in extra:
-                arr[p][i] = getattr(sites[i], p)
+                arr[p][i] = getattr(site, p)
 
         # NB: in test_correlation.py we define a SiteCollection with
         # non-unique sites, so we cannot do an
@@ -431,6 +431,7 @@ class SiteCollection(object):
         :param ntiles: number of tiles to generate (rounded if float)
         :returns: self if there are <=1 tiles, otherwise the tiles
         """
+        # if ntiles > nsites produce N tiles with a single site each
         ntiles = min(int(numpy.ceil(ntiles)), len(self))
         if ntiles <= 1:
             return [self]

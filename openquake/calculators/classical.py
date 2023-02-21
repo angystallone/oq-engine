@@ -20,7 +20,6 @@ import io
 import os
 import time
 import psutil
-import random
 import logging
 import operator
 import functools
@@ -230,9 +229,6 @@ def postclassical(pgetter, N, hstats, individual_rlzs,
     The "kind" is a string of the form 'rlz-XXX' or 'mean' of 'quantile-XXX'
     used to specify the kind of output.
     """
-    if 20 < monitor.task_no < pgetter.ntasks - 20:
-        # give time to the other tasks
-        time.sleep(pgetter.ntasks * random.random())
     with monitor('read PoEs', measuremem=True):
         pgetter.init()
 
@@ -454,7 +450,7 @@ class ClassicalCalculator(base.HazardCalculator):
             pm.gidx = pnemap.gidx
         for i, g in enumerate(pnemap.gidx):
             if g in acc:
-                acc[g].update(pnemap, i)
+                acc[g].multiply_pnes(pnemap, i)
                 self.n_outs[g] -= 1
                 assert self.n_outs[g] > -1, (g, self.n_outs[g])
                 if self.n_outs[g] == 0:  # no other tasks for this g
@@ -684,7 +680,8 @@ class ClassicalCalculator(base.HazardCalculator):
                     acc[g] = ProbabilityMap(sitecol.sids, L, 1).fill(1)
 
         totsize = sum(pmap.array.nbytes for pmap in acc.values())
-        logging.info('Global pmap size %s', humansize(totsize))
+        if totsize:
+            logging.info('Global pmap size %s', humansize(totsize))
 
         self.datastore.swmr_on()  # must come before the Starmap
         smap = parallel.Starmap(classical, h5=self.datastore.hdf5)

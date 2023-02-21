@@ -30,7 +30,6 @@ import numpy
 from openquake.baselib import parallel, general, hdf5
 from openquake.hazardlib import nrml, sourceconverter, InvalidFile, tom
 from openquake.hazardlib.contexts import ContextMaker, basename
-from openquake.hazardlib.calc.filters import magstr
 from openquake.hazardlib.lt import apply_uncertainties
 from openquake.hazardlib.geo.surface.kite_fault import kite_to_geom
 
@@ -76,6 +75,21 @@ def mutex_by_grp(src_groups):
     return numpy.array(lst, [('src_mutex', bool), ('rup_mutex', bool)])
 
 
+def build_rup_mutex(src_groups):
+    """
+    :returns: a composite array with fields (grp_id, src_id, rup_id, weight)
+    """
+    lst = []
+    dtlist = [('grp_id', numpy.uint16), ('src_id', numpy.uint32),
+              ('rup_id', numpy.uint32), ('weight', numpy.float64)]
+    for sg in src_groups:
+        if sg.rup_interdep == 'mutex':
+            for src in sg:
+                for i, (rup, _) in enumerate(src.data):
+                    lst.append((src.grp_id, src.id, i, rup.weight))
+    return numpy.array(lst, dtlist)
+
+
 def create_source_info(csm, h5):
     """
     Creates source_info, source_wkt, trt_smrs, toms
@@ -109,6 +123,7 @@ def create_source_info(csm, h5):
     # avoid hdf5 damned bug by creating source_info in advance
     h5.create_dataset('source_info',  (num_srcs,), source_info_dt)
     h5['mutex_by_grp'] = mutex_by_grp(csm.src_groups)
+    h5['rup_mutex'] = build_rup_mutex(csm.src_groups)
     h5['source_wkt'] = numpy.array(wkts, hdf5.vstr)
 
 
@@ -258,14 +273,15 @@ def _build_groups(full_lt, smdict):
             smlt_dir, smdict, rlz.value[0].split())
         bset_values = full_lt.source_model_lt.bset_values(rlz.lt_path)
         if bset_values and bset_values[0][0].uncertainty_type == 'extendModel':
-            (bset, value), *bset_values = bset_values
-            extra, extra_ids = _groups_ids(smlt_dir, smdict, value.split())
-            common = source_ids & extra_ids
-            if common:
-                raise InvalidFile(
-                    '%s contains source(s) %s already present in %s' %
-                    (value, common, rlz.value))
-            src_groups.extend(extra)
+            while len(bset_values):
+                (bset, value), *bset_values = bset_values
+                extra, extra_ids = _groups_ids(smlt_dir, smdict, value.split())
+                common = source_ids & extra_ids
+                if common:
+                    raise InvalidFile(
+                        '%s contains source(s) %s already present in %s' %
+                        (value, common, rlz.value))
+                src_groups.extend(extra)
         for src_group in src_groups:
             trt_smr = full_lt.get_trt_smr(src_group.trt, rlz.ordinal)
             sg = apply_uncertainties(bset_values, src_group)
@@ -444,14 +460,7 @@ class CompositeSourceModel:
         mags = general.AccumDict(accum=set())  # trt -> mags
         for sg in self.src_groups:
             for src in sg:
-                if hasattr(src, 'mags'):  # MultiFaultSource
-                    srcmags = {magstr(mag) for mag in src.mags}
-                elif hasattr(src, 'data'):  # nonparametric
-                    srcmags = {magstr(item[0].mag) for item in src.data}
-                else:
-                    srcmags = {magstr(item[0]) for item in
-                               src.get_annual_occurrence_rates()}
-                mags[sg.trt].update(srcmags)
+                mags[sg.trt].update(src.get_magstrs())
         return {trt: sorted(mags[trt]) for trt in mags}
 
     def get_floating_spinning_factors(self):
