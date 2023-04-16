@@ -1192,16 +1192,19 @@ def random_histogram(counts, nbins, seed):
     return numpy.histogram(numpy.random.random(counts), nbins, (0, 1))[0]
 
 
-def random_occur(weights, num_samples, seed=None):
+def random_occur(tot_occur, weights, seed=None):
     """
-    >>> random_occur([.4, .4, .2], 10, seed=42)
+    Distribute a total number of occurrence on a set of bins depending
+    on the weights.
+
+    >>> random_occur(10, [.4, .4, .2], seed=42)
     array([4, 4, 2])
-    >>> random_occur([.4, .4, .2], 10, seed=43)
+    >>> random_occur(10, [.4, .4, .2], seed=43)
     array([5, 4, 1])
     """
     if seed is not None:
         numpy.random.seed(seed)
-    choices = numpy.random.choice(len(weights), num_samples, p=weights)
+    choices = numpy.random.choice(len(weights), tot_occur, p=weights)
     return numpy.bincount(choices, minlength=len(weights))
 
 
