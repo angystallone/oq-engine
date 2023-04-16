@@ -468,15 +468,24 @@ def random_sample(branchsets, num_samples, seed, sampling_method):
 # used in calc.stochastic
 def sample_n_occ(weights, num_samples, seed, sampling_method='early_weights'):
     """
-    >>> sample_n_occ([.3, .3, .4], 1000, 45)
-    array([308, 305, 387])
-    >>> sample_n_occ([.3, .3, .4], 1000, 45, 'early_latin')
-    array([300, 300, 400])
+    Here are two examples with sampling_method='early_weights':
+
+    >>> sample_n_occ([.50, .45, .05], 1000, seed=42)
+    array([503, 451,  46])
+    >>> sample_n_occ([.50, .45, .05], 10, seed=42)
+    array([4, 5, 1])
+
+    Here are two examples with sampling_method='early_latin':
+
+    >>> sample_n_occ([.50, .45, .05], 1000, 42, 'early_latin')
+    array([500, 450,  50])
+    >>> sample_n_occ([.50, .45, .05], 10, 42, 'early_latin')
+    array([5, 5, 0])
     """
     probs = random(num_samples, seed, sampling_method)
     ws = sample([Weighted(i, w) for i, w in enumerate(weights)], probs,
                 sampling_method)
-    return numpy.bincount([w.object for w in ws])
+    return numpy.bincount([w.object for w in ws], minlength=len(weights))
 
 
 # ######################### branches and branchsets ######################## #
