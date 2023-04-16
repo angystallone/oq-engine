@@ -1221,13 +1221,16 @@ def sample_n_occ(weighted_objects, tot_n_occ, seed, get_weight=get_weight):
     numpy.random.seed(seed)
     ws = numpy.array([get_weight(obj) for obj in weighted_objects])
     ws /= ws.sum()  # normalize to 1
-    choices = numpy.random.choice(len(ws), tot_n_occ, p=ws)
+    if len(set(ws)) == 1 :  # all weights are equal
+        choices = numpy.random.choice(len(ws), tot_n_occ)  # fast lane
+    else:  # slow lane
+        choices = numpy.random.choice(len(ws), tot_n_occ, p=ws)
     n_occur = numpy.bincount(choices, minlength=len(ws))
-    out = []
+    pairs = []
     for n_occ, obj in zip(n_occur, weighted_objects):
         if n_occ > 0:
-            out.append((obj, n_occ))
-    return out
+            pairs.append((obj, n_occ))
+    return pairs
 
 
 def safeprint(*args, **kwargs):
