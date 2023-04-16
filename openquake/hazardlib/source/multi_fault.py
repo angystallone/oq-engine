@@ -203,17 +203,24 @@ class MultiFaultSource(BaseSeismicSource):
             return
         # split in blocks of BLOCKSIZE ruptures each
         for i, slc in enumerate(gen_slices(0, len(self.mags), BLOCKSIZE)):
-            src = self.__class__(
-                '%s:%d' % (self.source_id, i),
-                self.name,
-                self.tectonic_region_type,
-                self.rupture_idxs[slc],
-                self.probs_occur[slc],
-                self.mags[slc],
-                self.rakes[slc])
-            src.hdf5path = self.hdf5path
-            src.num_ruptures = src.count_ruptures()
+            src = self[slc]
+            src.source_id = '%s:%d' % (self.source_id, i)
             yield src
+
+    def __getitem__(self, idxs):
+        src = self.__class__(
+            self.source_id,
+            self.name,
+            self.tectonic_region_type,
+            self.rupture_idxs[idxs],
+            self.occurrence_probs[idxs],
+            self.magnitudes[idxs],
+            self.rakes[idxs],
+            self.investigation_time,
+            self.infer_occur_rates)
+        src.hdf5path = self.hdf5path
+        src.num_ruptures = src.count_ruptures()
+        return src
 
     def count_ruptures(self):
         """
