@@ -230,7 +230,7 @@ def sample_cluster(sources, srcfilter, num_ses, param):
             cnt = rup_counter[src_key][rup_key]
             ebr = EBRupture(rup, source_id, trt_smr, cnt)
             eb_ruptures.append(ebr)
-
+    import pdb; pdb.set_trace()
     return eb_ruptures, source_data
 
 

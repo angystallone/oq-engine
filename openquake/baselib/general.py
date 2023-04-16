@@ -53,7 +53,7 @@ BASE183 = ("ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_`abcdefghijklmno"
            "pqrstuvwxyz{|}!#$%&'()*+-/0123456789:;<=>?@¡¢"
            "£¤¥¦§¨©ª«¬®¯°±²³´µ¶·¸¹º»¼½¾¿ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑ"
            "ÒÓÔÕÖ×ØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõö÷øùúûüýþÿ")
-
+get_weight = operator.attrgetter('weight')
 mp = multiprocessing.get_context('spawn')
 
 
@@ -1204,8 +1204,30 @@ def random_occur(tot_occur, weights, seed=None):
     """
     if seed is not None:
         numpy.random.seed(seed)
-    choices = numpy.random.choice(len(weights), tot_occur, p=weights)
-    return numpy.bincount(choices, minlength=len(weights))
+    ws = numpy.array(weights)
+    ws /= ws.sum()  # normalize to 1
+    choices = numpy.random.choice(len(ws), tot_occur, p=ws)
+    return numpy.bincount(choices, minlength=len(ws))
+
+
+def sample_n_occ(weighted_objects, tot_n_occ, seed, get_weight=get_weight):
+    """
+    :param weighted_objects: a list of objects with a weight
+    :param tot_n_occ: the total number of occurrences
+    :param seed: the random seed to use
+    :param get_weight: the function used to extract the weight
+    :returns: a list of pairs [(obj, n_occ), ...] with sum(n_occ) = tot_n_occ
+    """
+    numpy.random.seed(seed)
+    ws = numpy.array([get_weight(obj) for obj in weighted_objects])
+    ws /= ws.sum()  # normalize to 1
+    choices = numpy.random.choice(len(ws), tot_n_occ, p=ws)
+    n_occur = numpy.bincount(choices, minlength=len(ws))
+    out = []
+    for n_occ, obj in zip(n_occur, weighted_objects):
+        if n_occ > 0:
+            out.append((obj, n_occ))
+    return out
 
 
 def safeprint(*args, **kwargs):
