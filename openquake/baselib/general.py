@@ -1192,6 +1192,19 @@ def random_histogram(counts, nbins, seed):
     return numpy.histogram(numpy.random.random(counts), nbins, (0, 1))[0]
 
 
+def random_occur(weights, num_samples, seed=None):
+    """
+    >>> random_occur([.4, .4, .2], 10, seed=42)
+    array([4, 4, 2])
+    >>> random_occur([.4, .4, .2], 10, seed=43)
+    array([5, 4, 1])
+    """
+    if seed is not None:
+        numpy.random.seed(seed)
+    choices = numpy.random.choice(len(weights), num_samples, p=weights)
+    return numpy.bincount(choices, minlength=len(weights))
+
+
 def safeprint(*args, **kwargs):
     """
     Convert and print characters using the proper encoding
